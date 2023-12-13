@@ -36,11 +36,20 @@ void newLopOperator(OP_OperatorTable *table){
 }
 
 
+static PRM_Name orienationStrChoices[] =
+{
+    PRM_Name("zx", "ZX Plan"),
+    PRM_Name("xy", "XY Plan"),
+    PRM_Name("yz", "YZ Plan"),
+    PRM_Name(0)
+};
+static PRM_ChoiceList   orienationStringMenu(PRM_CHOICELIST_SINGLE, orienationStrChoices);
+
+
 // Parms
 static PRM_Name primpathName("primpath", "Prim Path");
 
 static PRM_Name     orientaionName("orientaion", "Orientation");
-static PRM_Default  orienationParamDefault = PRM_Default(30.0);
 
 static PRM_Name     sizeParmName("size", "Size");
 static PRM_Default  sizeParamDefault[] = {PRM_Default(5.0), PRM_Default(5.0)};
@@ -68,7 +77,7 @@ static PRM_Range    columnParamRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICT
 PRM_Template
 LOP_Grid::myTemplateList[] = {
     PRM_Template(PRM_STRING,       1, &lopPrimPathName, &lopAddPrimPathDefault, &lopPrimPathMenu,0, 0, &lopPrimPathSpareData),
-    // PRM_Template(PRM_FLT,       1, &orientaionName,  &orienationParamDefault ),
+    PRM_Template(PRM_ORD,          1, &orientaionName,                          0,  &orienationStringMenu),
     PRM_Template(PRM_XYZ_J,        2, &sizeParmName,    sizeParamDefault,       0,  &sizeParamRange   ),
     PRM_Template(PRM_XYZ_J,        3, &centerParmName,  centerParamDefault,     0,  &centerParamRange ),
     PRM_Template(PRM_XYZ_J,        3, &rotateParmName,  rotateNameParamDefault, 0,  &rotateParamRange ),
