@@ -19,6 +19,9 @@ protected:
     /// Method to cook USD data for the LOP
     OP_ERROR cookMyLop(OP_Context &context) override;
 
+    UT_Vector3 getXYZParameterValue(const PRM_Name& paramName, fpreal t);
+
+
 private:
     void PRIMPATH(UT_String&str, fpreal t);
 

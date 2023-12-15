@@ -14,13 +14,16 @@
 #include <OP/OP_Operator.h>
 #include <PRM/PRM_Include.h>
 #include <UT/UT_DSOVersion.h>
+#include <UT/UT_Vector3.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usdGeom/tokens.h>
 #include <pxr/usd/usdGeom/mesh.h>
+#include <pxr/usd/usdGeom/points.h>
 
 
 using namespace HOU_HDK;
+using namespace std;
 PXR_NAMESPACE_USING_DIRECTIVE
 
 
@@ -53,23 +56,23 @@ static PRM_Name     orientaionName("orientaion", "Orientation");
 
 static PRM_Name     sizeParmName("size", "Size");
 static PRM_Default  sizeParamDefault[] = {PRM_Default(5.0), PRM_Default(5.0)};
-static PRM_Range    sizeParamRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICTED, 100);
+static PRM_Range    sizeParamRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 100);
 
 static PRM_Name     centerParmName("center", "Center");
 static PRM_Default  centerParamDefault[] = {PRM_Default(0.0), PRM_Default(0.0), PRM_Default(0.0)};
-static PRM_Range    centerParamRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICTED, 10);
+static PRM_Range    centerParamRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 10);
 
 static PRM_Name     rotateParmName("rotate", "Roate");
 static PRM_Default  rotateNameParamDefault[] = {PRM_Default(0.0), PRM_Default(0.0), PRM_Default(0.0)};
-static PRM_Range    rotateParamRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICTED, 360);
+static PRM_Range    rotateParamRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 360);
 
 static PRM_Name     rowParmName("row", "Row");
 static PRM_Default  rowParamDefault = PRM_Default(5);
-static PRM_Range    rowParamRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICTED, 10);
+static PRM_Range    rowParamRange(PRM_RANGE_UI , 0, PRM_RANGE_UI , 10);
 
 static PRM_Name     columnParmName("column", "Column");
 static PRM_Default  columnParamDefault = PRM_Default(5);
-static PRM_Range    columnParamRange(PRM_RANGE_RESTRICTED, 0, PRM_RANGE_RESTRICTED, 10);
+static PRM_Range    columnParamRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 10);
 
 
 
@@ -101,6 +104,21 @@ void LOP_Grid::PRIMPATH(UT_String &str, fpreal t){
     HUSDmakeValidUsdPath(str, true);
 }
 
+
+UT_Vector3 LOP_Grid::getXYZParameterValue(const PRM_Name& parmName, fpreal t)
+{
+    UT_Vector3 value(0.0, 0.0, 0.0);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        fpreal componentValue = evalFloat(parmName.getToken(), i, t);
+        value[i] = componentValue;
+    }
+
+    return value;
+}
+
+
 OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     // Cook the node connected to our input, and make a "soft copy" of the
     // result into our own HUSD_DataHandle.
@@ -110,9 +128,13 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     float now = context.getTime();
 
     UT_String primpath;
-    fpreal points;
+    int rows = evalInt(rowParmName.getToken(), 0, now);
+    int columns = evalInt(columnParmName.getToken(), 0, now);
+    UT_Vector3 size = getXYZParameterValue(sizeParmName, now);
 
 
+    if(rows < 2){rows = 2;};
+    if(columns < 2){columns = 2;};
 
     PRIMPATH(primpath, now);
 
@@ -150,11 +172,49 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     // access the stage directly. The edit target will already be set to
     // the "active layer", and as long as we leave it there, any changes
     // we make will be preserved by our data handle.
-    // UsdStageRefPtr stage = writelock.data()->stage();
-    // SdfPath sdfpath(HUSDgetSdfPath(primpath));
-    // // UsdPrim prim = stage->GetPrimAtPath(sdfpath);
+    UsdStageRefPtr stage = writelock.data()->stage();
+    SdfPath sdfpath(HUSDgetSdfPath(primpath));
+    // UsdPrim prim = stage->GetPrimAtPath(sdfpath);
 
-    // UsdGeomMesh geom = UsdGeomMesh::Define(stage, sdfpath);
+    UsdGeomMesh geom = UsdGeomMesh::Define(stage, sdfpath);
+    
+    VtArray<GfVec3f> points = {};
+    for (int r=0; r<rows; r++){
+        for (int c=0; c<columns; c++){
+
+            fpreal x = (static_cast<fpreal>(r) / (rows-1) - 0.5) * size.x();
+            fpreal y = 0;
+            fpreal z = (static_cast<fpreal>(c)  / (columns-1) - 0.5) * size.y();
+            GfVec3f point = GfVec3f(x, y, z);
+
+            points.emplace_back(point);
+        }
+        
+    }
+
+    // Set vertix count 
+    VtArray<int> vertic_count;
+    VtArray<int> vertex_indices;
+    for (int r=0; r<rows-1; r++){
+        for (int c=0; c<columns-1; c++){
+            vertic_count.emplace_back(4);
+
+            int idx = r*columns + c;
+
+            vertex_indices.emplace_back(idx);
+            vertex_indices.emplace_back(idx + 1);
+            vertex_indices.emplace_back(idx + 1 + columns);
+            vertex_indices.emplace_back(idx + columns);
+
+        }
+    }
+    geom.CreateFaceVertexCountsAttr().Set(vertic_count);
+    geom.CreateFaceVertexIndicesAttr().Set(vertex_indices);
+
+
+    UsdAttribute poistsAttr = geom.CreatePointsAttr();
+    poistsAttr.Set(points);
+
 
     // if (prim)
 	// prim.GetAttribute(UsdGeomTokens->radius).Set(points);
