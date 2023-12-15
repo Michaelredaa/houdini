@@ -19,7 +19,8 @@ protected:
     /// Method to cook USD data for the LOP
     OP_ERROR cookMyLop(OP_Context &context) override;
 
-    UT_Vector3 getXYZParameterValue(const PRM_Name& paramName, fpreal t);
+    UT_Vector3 getXYZParameterValue(const PRM_Name& parmName, fpreal t);
+    std::string evalOrdAsString(const PRM_Name& parmName, fpreal t);
 
 
 private:

@@ -52,7 +52,7 @@ static PRM_ChoiceList   orienationStringMenu(PRM_CHOICELIST_SINGLE, orienationSt
 // Parms
 static PRM_Name primpathName("primpath", "Prim Path");
 
-static PRM_Name     orientaionName("orientaion", "Orientation");
+static PRM_Name     orientaionParmName("orientaion", "Orientation");
 
 static PRM_Name     sizeParmName("size", "Size");
 static PRM_Default  sizeParamDefault[] = {PRM_Default(5.0), PRM_Default(5.0)};
@@ -80,7 +80,7 @@ static PRM_Range    columnParamRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 10);
 PRM_Template
 LOP_Grid::myTemplateList[] = {
     PRM_Template(PRM_STRING,       1, &lopPrimPathName, &lopAddPrimPathDefault, &lopPrimPathMenu,0, 0, &lopPrimPathSpareData),
-    PRM_Template(PRM_ORD,          1, &orientaionName,                          0,  &orienationStringMenu),
+    PRM_Template(PRM_ORD,          1, &orientaionParmName,                          0,  &orienationStringMenu),
     PRM_Template(PRM_XYZ_J,        2, &sizeParmName,    sizeParamDefault,       0,  &sizeParamRange   ),
     PRM_Template(PRM_XYZ_J,        3, &centerParmName,  centerParamDefault,     0,  &centerParamRange ),
     PRM_Template(PRM_XYZ_J,        3, &rotateParmName,  rotateNameParamDefault, 0,  &rotateParamRange ),
@@ -119,18 +119,28 @@ UT_Vector3 LOP_Grid::getXYZParameterValue(const PRM_Name& parmName, fpreal t)
 }
 
 
+string LOP_Grid::evalOrdAsString(const PRM_Name& parmName, fpreal t){
+    UT_String name;
+    evalString(name, parmName.getToken(), 0, t);
+    return name.toStdString();
+}
+
+
+
 OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     // Cook the node connected to our input, and make a "soft copy" of the
     // result into our own HUSD_DataHandle.
     if (cookModifyInput(context) >= UT_ERROR_FATAL)
 	return error();
 
-    float now = context.getTime();
+    fpreal now = context.getTime();
 
     UT_String primpath;
     int rows = evalInt(rowParmName.getToken(), 0, now);
     int columns = evalInt(columnParmName.getToken(), 0, now);
     UT_Vector3 size = getXYZParameterValue(sizeParmName, now);
+
+    string orientation = evalOrdAsString(orientaionParmName, now);
 
 
     if(rows < 2){rows = 2;};
@@ -174,7 +184,6 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     // we make will be preserved by our data handle.
     UsdStageRefPtr stage = writelock.data()->stage();
     SdfPath sdfpath(HUSDgetSdfPath(primpath));
-    // UsdPrim prim = stage->GetPrimAtPath(sdfpath);
 
     UsdGeomMesh geom = UsdGeomMesh::Define(stage, sdfpath);
     
@@ -185,7 +194,15 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
             fpreal x = (static_cast<fpreal>(r) / (rows-1) - 0.5) * size.x();
             fpreal y = 0;
             fpreal z = (static_cast<fpreal>(c)  / (columns-1) - 0.5) * size.y();
+
             GfVec3f point = GfVec3f(x, y, z);
+
+            if (orientation == "xy"){
+                point = GfVec3f(y, z, x);
+            }
+            if (orientation == "yz"){
+                point = GfVec3f(z, x, y);
+            }
 
             points.emplace_back(point);
         }
