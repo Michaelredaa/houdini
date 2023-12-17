@@ -2,6 +2,8 @@
 #define __TBB_show_deprecation_message_atomic_H
 #define __TBB_show_deprecation_message_task_H
 
+#include <cmath>
+
 #include "LOP_Grid.h"
 #include <LOP/LOP_PRMShared.h>
 #include <LOP/LOP_Error.h>
@@ -39,6 +41,62 @@ void newLopOperator(OP_OperatorTable *table){
 }
 
 
+GfVec3f rotatePoints(GfVec3f point, UT_Vector3 angle){
+
+    fpreal s, c, rad;
+    fpreal x, y, z;
+    fpreal rx, ry, rz;
+
+    x = rx = point[0];
+    y = ry = point[1];
+    z = rz = point[2];
+
+
+
+    // @X
+    if (angle.x() != 0){
+        rad = M_PI / 180.0 * angle.x();
+
+        s = sin(rad);
+        c = cos(rad);
+
+        rz = z*c - y*s;
+        ry = z*s + y*c;
+        z=rz; y=ry;
+
+    }
+
+    // @Y
+    if (angle.y() != 0){
+        rad = M_PI / 180.0 * angle.y();
+
+        s = sin(rad);
+        c = cos(rad);
+
+        rx = x*c + z*s;
+        rz = -x*s + z*c;
+        x=rx; z=rz; 
+    }
+
+    // @Z
+    if (angle.z() != 0){
+        rad = M_PI / 180.0 * angle.z();
+
+        s = sin(rad);
+        c = cos(rad);
+
+        rx = x*c - y*s;
+        ry = x*s + y*c;
+        x=rx; y=ry; 
+    }
+    return GfVec3f(rx, ry, rz);
+}
+
+
+// Parms
+static PRM_Name primpathName("primpath", "Prim Path");
+
+static PRM_Name     orientaionParmName("orientaion", "Orientation");
 static PRM_Name orienationStrChoices[] =
 {
     PRM_Name("zx", "ZX Plan"),
@@ -46,14 +104,8 @@ static PRM_Name orienationStrChoices[] =
     PRM_Name("yz", "YZ Plan"),
     PRM_Name(0)
 };
+
 static PRM_ChoiceList   orienationStringMenu(PRM_CHOICELIST_SINGLE, orienationStrChoices);
-
-
-// Parms
-static PRM_Name primpathName("primpath", "Prim Path");
-
-static PRM_Name     orientaionParmName("orientaion", "Orientation");
-
 static PRM_Name     sizeParmName("size", "Size");
 static PRM_Default  sizeParamDefault[] = {PRM_Default(5.0), PRM_Default(5.0)};
 static PRM_Range    sizeParamRange(PRM_RANGE_UI, 0, PRM_RANGE_UI, 100);
@@ -138,7 +190,9 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     UT_String primpath;
     int rows = evalInt(rowParmName.getToken(), 0, now);
     int columns = evalInt(columnParmName.getToken(), 0, now);
-    UT_Vector3 size = getXYZParameterValue(sizeParmName, now);
+    UT_Vector3 grid_size = getXYZParameterValue(sizeParmName, now);
+    UT_Vector3 grid_center = getXYZParameterValue(centerParmName, now);
+    UT_Vector3 rot_angle = getXYZParameterValue(rotateParmName, now);
 
     string orientation = evalOrdAsString(orientaionParmName, now);
 
@@ -191,9 +245,9 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     for (int r=0; r<rows; r++){
         for (int c=0; c<columns; c++){
 
-            fpreal x = (static_cast<fpreal>(r) / (rows-1) - 0.5) * size.x();
+            fpreal x = (static_cast<fpreal>(r) / (rows-1) - 0.5) * grid_size.x();
             fpreal y = 0;
-            fpreal z = (static_cast<fpreal>(c)  / (columns-1) - 0.5) * size.y();
+            fpreal z = (static_cast<fpreal>(c)  / (columns-1) - 0.5) * grid_size.y();
 
             GfVec3f point = GfVec3f(x, y, z);
 
@@ -203,7 +257,9 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
             if (orientation == "yz"){
                 point = GfVec3f(z, x, y);
             }
+            point = rotatePoints(point, rot_angle);
 
+            point += GfVec3f(grid_center.data());
             points.emplace_back(point);
         }
         
