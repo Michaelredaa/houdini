@@ -29,15 +29,20 @@ using namespace std;
 PXR_NAMESPACE_USING_DIRECTIVE
 
 
-
 void newLopOperator(OP_OperatorTable *table){
-    table->addOperator(new OP_Operator(
-        "Grid",
-        "Grid",
-        LOP_Grid::myConstructor,
-        LOP_Grid::myTemplateList,
-        (unsigned)0,
-        (unsigned)1));
+
+    OP_Operator *op = new OP_Operator(
+        "lop_grid",               // Internal name
+        "grid",                   // UI name
+        LOP_Grid::myConstructor,  // How to build the node
+        LOP_Grid::myTemplateList, // parameters
+        0,                        // Min # of sources
+        1,                        // Max # of sources
+        nullptr,                  // Custom local variables (none)
+        OP_FLAG_GENERATOR         // Flag it as generator
+        );
+        op->setIconName("LOP_Grid.png");
+    table->addOperator(op);            
 }
 
 

@@ -4,12 +4,6 @@
 *.exe
 *.dll
 
-# Ignore binary files
-*.jpg
-*.jpeg
-*.png
-*.gif
-
 # Ignore log files
 *.log
 
@@ -18,6 +12,7 @@
 /dist/
 /node_modules/
 /vendor/
+*build*
 
 # Ignore system files
 .DS_Store
