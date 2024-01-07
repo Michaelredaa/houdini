@@ -5,27 +5,59 @@ Documentation: This script used inside python node to create a usd geom as a gri
 
 import math
 
-import hou
+# import hou
 
-from pxr import Usd, UsdGeom, Gf
+from pxr import Usd, UsdGeom, Sdf, Vt, Gf
 
-node = hou.pwd()
-stage = node.editableStage()
 
-prim_path = node.parm("primpath").eval()
-orientation = node.parm("orientation").evalAsString()
-size = node.parmTuple("size").eval()
-center = node.parmTuple("center").eval()
-rotate = node.parmTuple("rotate").eval()
+# node = hou.pwd()
+# stage = node.editableStage()
+#
+# prim_path = node.parm("primpath").eval()
+# orientation = node.parm("orientation").evalAsString()
+# size = node.parmTuple("size").eval()
+# center = node.parmTuple("center").eval()
+# rotate = node.parmTuple("rotate").eval()
+#
+# rows = node.parm("rows").eval()
+# columns = node.parm("columns").eval()
 
-rows = node.parm("rows").eval()
-columns = node.parm("columns").eval()
+# if rows < 2:
+#     rows = 2
+#
+# if columns < 2:
+#     columns = 2
 
-if rows < 2:
-    rows = 2
 
-if columns < 2:
-    columns = 2
+def create_uv(mesh: UsdGeom.Mesh):
+    points_attr = mesh.GetPointsAttr()
+    face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
+
+    points = points_attr.Get()
+
+    min_x = min(points, key=lambda l: l[0])[0]
+    max_x = max(points, key=lambda l: l[0])[0]
+    size_x = max_x - min_x
+
+    min_z = min(points, key=lambda l: l[2])[2]
+    max_z = max(points, key=lambda l: l[2])[2]
+    size_z = max_z - min_z
+
+    st_values = []
+    for i in range(0, len(face_vertex_indices), 4):
+        indices = face_vertex_indices[i:i + 4]
+        for idx in indices:
+            st_value = [
+                (points[idx][0] - min_x) / size_x,
+                1 - (points[idx][2] - min_z) / size_z
+            ]
+            st_values.append(st_value)
+
+    # Create the "uv" attribute
+
+    st_attr = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray,
+                                 interpolation=UsdGeom.Tokens.faceVarying)
+    st_attr.Set(Vt.Vec2fArray(st_values))
 
 
 def rotate_point(point: list, angle: list) -> tuple:
@@ -56,6 +88,7 @@ def rotate_point(point: list, angle: list) -> tuple:
 
 
 def create_grid(
+        stage: Usd.Stage,
         prim_path: str,
         rows: int,
         columns: int,
@@ -64,7 +97,7 @@ def create_grid(
         center: list[float],
         rotate: list[float],
 
-) -> Usd.UsdGeom.Mesh:
+) -> UsdGeom.Mesh:
     # Add Mesh
     mesh = UsdGeom.Mesh.Define(stage, prim_path)
 
@@ -108,10 +141,16 @@ def create_grid(
 
     mesh.CreatePointsAttr(points)
 
+    create_uv(mesh)
+
     return mesh
 
 
-create_grid(prim_path, rows, columns, size, orientation, center, rotate)
+# create_grid(prim_path, rows, columns, size, orientation, center, rotate)
+
+stage = Usd.Stage.CreateInMemory()
+create_grid(stage, "/grid", 50, 50, (10, 10), '', (0, 0, 0), (0, 0, 0))
+stage.GetRootLayer().Export(r"C:\Users\michael\Documents\work\houdini\usd\grid\geom.usd")
 
 if __name__ == '__main__':
     print(__name__)
