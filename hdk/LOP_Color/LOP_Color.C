@@ -100,15 +100,16 @@ VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
     }
 
     // Get min and max values
-    GfVec3f min_range = arr[0];
-    GfVec3f max_range = arr[0];
-
+    GfVec3f range = arr[0];
     for (const GfVec3f& vec : arr) {
         for (int a = 0; a < 3; ++a) {
-            min_range[a] = min(min_range[a], vec[a]);
-            max_range[a] = max(max_range[a], vec[a]);
+            range[0] = min(range[0], vec[a]);
+            range[1] = max(range[1], vec[a]);
         }
+
     }
+
+
     // Normalize the array
     VtArray<GfVec3f> normalized_arr;
     normalized_arr.reserve(arr.size());
@@ -116,7 +117,7 @@ VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
     for (const GfVec3f& vec : arr) {
         GfVec3f normalize_vector;
         for (int a = 0; a < 3; ++a) {
-            normalize_vector[a] = (max_range[a] - min_range[a] != 0) ? (vec[a] - min_range[a]) / (max_range[a] - min_range[a]) : 1.0;
+            normalize_vector[a] = (range[0] - range[1] != 0) ? (vec[a] - range[0]) / (range[1] - range[0]) : 1.0;
         }
         normalized_arr.push_back(normalize_vector);
     }
