@@ -125,7 +125,6 @@ VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
 }
 
 
-
 PRM_Template LOP_Color::myTemplateList[] = {
     PRM_Template(PRM_STRING,             1, &lopPrimPathName,        &lopEditPrimPathDefault, &lopPrimPathMenu, 0, 0, &lopPrimPathSpareData),
     PRM_Template(PRM_ORD,                1, &interpolationParmName,                                             0,  &interpolationTypesMenu),
@@ -195,12 +194,17 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
     UT_Ramp ramp;
     updateRampFromMultiParm(now, getParm(string(rampParmName.getToken())), ramp);
 
-    // for (int i=0; i< ramp.getNodeCount(); i++){
-    //     const UT_ColorNode *colornode = ramp.getNode(i);
-    //     fpreal pos = colornode->t;
 
-    //     printf("%f %f %f\n", colornode->rgba.r, colornode->rgba.g, colornode->rgba.b);
-    // }
+    VtArray<fpreal> positions;
+    VtArray<GfVec3f> colors;
+    for (int i=0; i< ramp.getNodeCount(); i++){
+        const UT_ColorNode *colornode = ramp.getNode(i);
+        fpreal pos = colornode->t;
+        GfVec3f color = GfVec3f(colornode->rgba.r, colornode->rgba.g, colornode->rgba.b);
+        positions.push_back(pos);
+        colors.push_back(color);
+
+    }
 
     // USD
     HUSD_AutoWriteLock writelock(editableDataHandle());
@@ -277,7 +281,12 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
         VtArray<GfVec3f> attrValueNormalized;
         if (attr.Get(&value)){
             if (value.IsHolding<VtArray<GfVec3f>>()){
-                attrValue = value.UncheckedGet<VtArray<GfVec3f>>();
+                // attrValue = value.UncheckedGet<VtArray<GfVec3f>>();
+                if (true){ // single value
+                    for (const GfVec3f val: value.UncheckedGet<VtArray<GfVec3f>>()){
+                        attrValue.push_back(GfVec3f(val[1], val[1], val[1]));
+                    }
+                }
 
             }else if (value.IsHolding<VtArray<GfVec2f>>()) {
                 for (const GfVec2f& vec: value.UncheckedGet<VtArray<GfVec2f>>()){
@@ -300,8 +309,48 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
             }
 
         attrValueNormalized = normalize_array(attrValue);
+
+        VtArray<GfVec3f>  attrValueColor;
+        // if (positions.size() > 1){
+        //     for (const GfVec3f val: attrValueNormalized){
+        //         GfVec3f c;
+        //         for (int a=0; a<3; a++){
+        //             float r = (colors[1][a] - 0) / (colors[0][a] - 0);
+        //             c[a] = ((val[1] - colors[0][a]) / r) + colors[0][a];
+        //         }
+        //         attrValueColor.push_back(c);
+        //     }
+        // }
+
+        if (positions.size() > 1){
+            // Remap input colors to positions
+            for (int i = 0; i < attrValueNormalized.size(); i++) {
+                // Find the two positions that surround the current input color
+                
+                double value = attrValueNormalized[i][1];
+                size_t p;
+                for (p = 0; p < positions.size() - 1; p++) {
+                    if (value < positions[p + 1]) {
+                        break;
+                    }
+                }
+
+                // Perform linear interpolation
+                double t = (attrValueNormalized[i][1] - positions[p]) / (positions[p + 1] - positions[p]);
+
+                GfVec3f remappedColor;
+                for (int a = 0; a < 3; ++a) {
+                    remappedColor[a] = colors[p][a] + t*(colors[p + 1][a] - colors[p][a]);
+                    }
+                attrValueColor.push_back(remappedColor);
+
+            }
+        }
+
+
+
         if (normalize){
-            displayColorAttr.Set(attrValueNormalized);
+            displayColorAttr.Set(attrValueColor);
         }else{
             displayColorAttr.Set(attrValue);
         }
