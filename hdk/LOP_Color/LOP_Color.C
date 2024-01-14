@@ -109,7 +109,6 @@ VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
 
     }
 
-
     // Normalize the array
     VtArray<GfVec3f> normalized_arr;
     normalized_arr.reserve(arr.size());
@@ -272,66 +271,40 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
         SdfValueTypeName attrType = attr.GetTypeName();
         SdfTupleDimensions attrsize = attrType.GetDimensions();
 
-        
 
+        VtValue value;
         VtArray<GfVec3f> attrValue;
-        if (attrType.IsArray()){
-            if (int(attrsize.d[0]) == 3){
-                attr.Get(&attrValue);
-                VtArray<GfVec3f> attrValueNormalized = normalize_array(attrValue);
+        VtArray<GfVec3f> attrValueNormalized;
+        if (attr.Get(&value)){
+            if (value.IsHolding<VtArray<GfVec3f>>()){
+                attrValue = value.UncheckedGet<VtArray<GfVec3f>>();
 
-                if (normalize){
-                    displayColorAttr.Set(attrValueNormalized);
-                }else{
-                    displayColorAttr.Set(attrValue);
-                }
-                
-
-            }else if( int(attrsize.d[0]) == 2){
-                VtArray<GfVec2f> currentArray;
-                attr.Get(&currentArray);
-
-                for (const GfVec2f& vec: currentArray){
-                    attrValue.push_back(GfVec3f(vec[0], vec[1], 0));
-                }
-
-                VtArray<GfVec3f> attrValueNormalized = normalize_array(attrValue);
-
-                if (normalize){
-                    displayColorAttr.Set(attrValueNormalized);
-                }else{
-                    displayColorAttr.Set(attrValue);
-                }
-                
-
-            }else if( int(attrsize.d[0]) == 1 || int(attrsize.d[0]) == 0){
-                VtValue value;
-                if (attr.Get(&value)) {
-                    if (value.IsHolding<VtArray<int>>()) {
-                        VtArray<int> currentArray = value.UncheckedGet<VtArray<int>>();
-                       for (const int val: currentArray){
-                            float casted_val = static_cast<float>(val);
-                            attrValue.push_back(GfVec3f(casted_val, casted_val, casted_val));
-                        }
-                    } else if (value.IsHolding<VtArray<float>>()) {
-                        VtArray<float> currentArray = value.UncheckedGet<VtArray<float>>();
-
-                        for (const float val: currentArray){
-                            attrValue.push_back(GfVec3f(val, val, val));
-                        }
-
+            }else if (value.IsHolding<VtArray<GfVec2f>>()) {
+                for (const GfVec2f& vec: value.UncheckedGet<VtArray<GfVec2f>>()){
+                    attrValue.push_back(GfVec3f(vec[0], vec[1], 0.0));
                     }
+
+            }else if (value.IsHolding<VtArray<float>>()) {
+                for (const float val: value.UncheckedGet<VtArray<float>>()){
+                    attrValue.push_back(GfVec3f(val, val, val));
                 }
 
-                const VtArray<GfVec3f> attrValueNormalized = normalize_array(attrValue);
-
-                if (normalize){
-                    displayColorAttr.Set(attrValueNormalized);
-                }else{
-                    displayColorAttr.Set(attrValue);
-                }
-
+            }else if (value.IsHolding<VtArray<int>>()) {
+                for (const int val: value.UncheckedGet<VtArray<int>>()){
+                        float casted_val = static_cast<float>(val);
+                        attrValue.push_back(GfVec3f(casted_val, casted_val, casted_val));
             }
+        }else{
+            addError(OP_ERR_ANYTHING, "Bad Attribue");
+            return error();
+            }
+
+        attrValueNormalized = normalize_array(attrValue);
+        if (normalize){
+            displayColorAttr.Set(attrValueNormalized);
+        }else{
+            displayColorAttr.Set(attrValue);
+        }
         }
     // attr = prim.GetAttribute(attr_name)
 
