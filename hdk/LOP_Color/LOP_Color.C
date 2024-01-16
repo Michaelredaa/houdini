@@ -54,7 +54,6 @@ static PRM_Name primpathName("primpath", "Prim Path");
 static PRM_Name     interpolationParmName("interpolation", "Interpolation");
 static PRM_Name     interpolationTypes[] =
 {
-    PRM_Name("auto", "Auto Guess"),
     PRM_Name("constant", "Constant"),
     PRM_Name("uniform", "Uniform"),
     PRM_Name("vertex", "Vertex"),
@@ -66,9 +65,15 @@ static PRM_ChoiceList   interpolationTypesMenu(PRM_CHOICELIST_SINGLE, interpolat
 static PRM_Name     attributeParmName("attribute", "Attribute");
 static PRM_Default attributeParmDefault(0.0f, "points");
 
-static PRM_Name     channelParmName("channel", "Channel");
-static PRM_Default  channelParmDefault = PRM_Default(1);
-static PRM_Range    channelParmRange(PRM_RANGE_UI , 1, PRM_RANGE_UI , 4);
+static PRM_Name     chsParmName("channels", "Channels");
+static PRM_Name     chxParmName("chx", "X");
+static PRM_Default  chxParmDefault = PRM_Default(1);
+
+static PRM_Name     chyParmName("chy", "Y");
+static PRM_Default  chyParmDefault = PRM_Default(1);
+
+static PRM_Name     chzParmName("chz", "Z");
+static PRM_Default  chzParmDefault = PRM_Default(1);
 
 static PRM_Name     normalizeParmName("normalize", "Normalize");
 static PRM_Default  normalizeParmDefault = PRM_Default(true);
@@ -91,10 +96,20 @@ static PRM_Default       colorParmDefault[] = {PRM_Default(1.0), PRM_Default(1.0
 static PRM_Conditional   colorParmCondition("{ colortype != constant }", PRM_CONDTYPE_HIDE);
 
 static PRM_Name          rampParmName("ramp", "Color Ramp");
-static PRM_Conditional   rampParmCondition("{ colortype != ramp }", PRM_CONDTYPE_HIDE);
+static PRM_ConditionalGroup rampParmCondition;
+static PRM_Conditional   rampParmConditionHide("{ colortype != ramp }", PRM_CONDTYPE_HIDE);
+static PRM_Conditional   rampParmConditionDisable("{ normalize == 0 }", PRM_CONDTYPE_DISABLE);
 
 
-VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
+
+void initializeConditions(void) {
+    rampParmCondition.addConditional(rampParmConditionHide);
+    rampParmCondition.addConditional(rampParmConditionDisable);
+}
+
+
+
+VtArray<GfVec3f> normalize_array_all_channels(const VtArray<GfVec3f>& arr) {
     if (arr.empty()) {
         return VtArray<GfVec3f>();
     }
@@ -124,17 +139,53 @@ VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
     return normalized_arr;
 }
 
+VtArray<GfVec3f> normalize_array(const VtArray<GfVec3f>& arr) {
+    if (arr.empty()) {
+        return VtArray<GfVec3f>();
+    }
+
+    // Get min and max values
+    GfVec3f min_range = arr[0];
+    GfVec3f max_range = arr[0];
+
+    for (const GfVec3f& vec : arr) {
+        for (int a = 0; a < 3; ++a) {
+            min_range[a] = min(min_range[a], vec[a]);
+            max_range[a] = max(max_range[a], vec[a]);
+        }
+    }
+    // Normalize the array
+    VtArray<GfVec3f> normalized_arr;
+    normalized_arr.reserve(arr.size());
+
+    for (const GfVec3f& vec : arr) {
+        GfVec3f normalize_vector;
+        for (int a = 0; a < 3; ++a) {
+            normalize_vector[a] = (max_range[a] - min_range[a] != 0) ? (vec[a] - min_range[a]) / (max_range[a] - min_range[a]) : 0.0;
+        }
+        normalized_arr.push_back(normalize_vector);
+    }
+
+    return normalized_arr;
+}
+
 
 PRM_Template LOP_Color::myTemplateList[] = {
     PRM_Template(PRM_STRING,             1, &lopPrimPathName,        &lopEditPrimPathDefault, &lopPrimPathMenu, 0, 0, &lopPrimPathSpareData),
     PRM_Template(PRM_ORD,                1, &interpolationParmName,                                             0,  &interpolationTypesMenu),
     PRM_Template(PRM_STRING,             1, &attributeParmName,      &attributeParmDefault),
-    PRM_Template(PRM_INT,                1, &channelParmName,        &channelParmDefault,                       0,  &channelParmRange),
-    PRM_Template(PRM_TOGGLE,             1, &normalizeParmName,      &normalizeParmDefault),
     PRM_Template(PRM_FLT,                1, &timeParmName,           &timeParmDefault,                          0,  &timeParmRange),
     PRM_Template(PRM_ORD,                1, &colorTypeParmName,                                                 0,  &colorTypeTypesMenu),
+
+
+    PRM_Template(PRM_TOGGLE,             1, &normalizeParmName,      &normalizeParmDefault),
+    PRM_Template(PRM_LABEL  | PRM_TYPE_JOIN_NEXT,             1, &chsParmName),
+    PRM_Template(PRM_TOGGLE | PRM_TYPE_JOIN_NEXT,             1, &chxParmName, &chxParmDefault),
+    PRM_Template(PRM_TOGGLE | PRM_TYPE_JOIN_NEXT,             1, &chyParmName, &chyParmDefault),
+    PRM_Template(PRM_TOGGLE                     ,             1, &chzParmName, &chzParmDefault),
+
     PRM_Template(PRM_RGB,                3, &colorParmName,          colorParmDefault, 0, 0, 0, 0, 1, 0, &colorParmCondition),
-    PRM_Template(PRM_MULTITYPE_RAMP_RGB, NULL, 1, &rampParmName,     PRMtwoDefaults,   0, 0, 0, &rampParmCondition),
+    PRM_Template(PRM_MULTITYPE_RAMP_RGB, NULL, 1, &rampParmName,     PRMtwoDefaults,   0, 0, 0, &rampParmConditionHide),
     PRM_Template(),
 };
 
@@ -186,7 +237,9 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
     string interpolation = evalOrdAsString(interpolationParmName, now);
     UT_Vector3 constantcolor = getXYZParameterValue(colorParmName, now);
 
-    int channel = evalInt(channelParmName.getToken(), 0, now);
+    int chx = bool(evalInt(chxParmName.getToken(), 0, now));
+    int chy = bool(evalInt(chyParmName.getToken(), 0, now));
+    int chz = bool(evalInt(chzParmName.getToken(), 0, now));
     int normalize = evalInt(normalizeParmName.getToken(), 0, now);
 
     fpreal time = evalFloat(timeParmName.getToken(), 0, now);
@@ -214,7 +267,7 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
     UsdPrim prim = stage->GetPrimAtPath(SdfPath(HUSDgetSdfPath(primpath)));
 
     if (! prim.IsValid()){
-        addError(LOP_PRIM_NOT_FOUND, primpath);
+        addError(OP_ERR_ANYTHING, "Prim Not Found");
         return error();
     }
 
@@ -238,7 +291,7 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
     GfVec3f colorvector = GfVec3f(constantcolor.x(), constantcolor.y(), constantcolor.z());
 
     if (colortype == "constant"){
-        if (interpolation == "auto" || interpolation == "constant" ){
+        if (interpolation == "constant" ){
             VtArray<GfVec3f> colorarray(1, colorvector);
             displayColorAttr.SetMetadata(TfToken("interpolation"), VtValue("constant"));
             displayColorAttr.Set(colorarray);
@@ -275,18 +328,39 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
         SdfValueTypeName attrType = attr.GetTypeName();
         SdfTupleDimensions attrsize = attrType.GetDimensions();
 
-
+        bool usdramp = false;
         VtValue value;
         VtArray<GfVec3f> attrValue;
         VtArray<GfVec3f> attrValueNormalized;
         if (attr.Get(&value)){
             if (value.IsHolding<VtArray<GfVec3f>>()){
-                // attrValue = value.UncheckedGet<VtArray<GfVec3f>>();
-                if (true){ // single value
-                    for (const GfVec3f val: value.UncheckedGet<VtArray<GfVec3f>>()){
-                        attrValue.push_back(GfVec3f(val[1], val[1], val[1]));
+                int c = -1;
+                if (chx && !chy && !chz && c==-1){ // single value
+                    c = 0;
+                }else if (chy && !chx && !chz){
+                    c = 1;
+                } else if (chz && !chy && !chx){
+                    c = 2;
+                }
+
+                for (const GfVec3f val: value.UncheckedGet<VtArray<GfVec3f>>()){
+                    if (chx && chy && chz){
+                        attrValue.push_back(GfVec3f(val[0], val[1], val[2]));
+
+                    }else if (chx && chy && !chz){
+                        attrValue.push_back(GfVec3f(val[0], val[1], 0.0));
+
+                    }else if (chx && !chy && chz){
+                        attrValue.push_back(GfVec3f(val[0], 0.0, val[2]));
+                    }else if (!chx && chy && chz){
+                        attrValue.push_back(GfVec3f(0.0, val[1], val[2]));
+                    }
+                    else{
+                        attrValue.push_back(GfVec3f(val[c], val[c], val[c]));
+                        usdramp = true;
                     }
                 }
+
 
             }else if (value.IsHolding<VtArray<GfVec2f>>()) {
                 for (const GfVec2f& vec: value.UncheckedGet<VtArray<GfVec2f>>()){
@@ -296,12 +370,14 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
             }else if (value.IsHolding<VtArray<float>>()) {
                 for (const float val: value.UncheckedGet<VtArray<float>>()){
                     attrValue.push_back(GfVec3f(val, val, val));
+                    usdramp = true;
                 }
 
             }else if (value.IsHolding<VtArray<int>>()) {
                 for (const int val: value.UncheckedGet<VtArray<int>>()){
                         float casted_val = static_cast<float>(val);
                         attrValue.push_back(GfVec3f(casted_val, casted_val, casted_val));
+                        usdramp = true;
             }
         }else{
             addError(OP_ERR_ANYTHING, "Bad Attribue");
@@ -311,16 +387,6 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
         attrValueNormalized = normalize_array(attrValue);
 
         VtArray<GfVec3f>  attrValueColor;
-        // if (positions.size() > 1){
-        //     for (const GfVec3f val: attrValueNormalized){
-        //         GfVec3f c;
-        //         for (int a=0; a<3; a++){
-        //             float r = (colors[1][a] - 0) / (colors[0][a] - 0);
-        //             c[a] = ((val[1] - colors[0][a]) / r) + colors[0][a];
-        //         }
-        //         attrValueColor.push_back(c);
-        //     }
-        // }
 
         if (positions.size() > 1){
             // Remap input colors to positions
@@ -347,49 +413,19 @@ OP_ERROR LOP_Color::cookMyLop(OP_Context &context){
             }
         }
 
-
-
         if (normalize){
-            displayColorAttr.Set(attrValueColor);
+            if (usdramp){
+                displayColorAttr.Set(attrValueColor);
+            }else{
+                displayColorAttr.Set(attrValueNormalized);
+            }
+            
         }else{
             displayColorAttr.Set(attrValue);
         }
         }
-    // attr = prim.GetAttribute(attr_name)
 
-    // if not attr.HasValue():
-    //     return
-
-    // attr_values = np.array(attr.Get(time))
-    // if normalize:
-    //     attr_values = normalize_2d_array(attr_values)
-    // attr_values = attr_values * multiplier
-    // attr_shape = attr_values.shape
-
-    // if channel is not None and len(attr_shape) not in [0, 1]:
-    //     if channel < attr_shape[1]:
-    //         attr_values = attr_values[:, channel]
-
-    // attr_shape = attr_values.shape
-    // if len(attr_shape) in [0, 1]:
-    //     attr_values = np.repeat(attr_values.reshape(-1, 1), 3, axis=1)
-    // elif len(attr_shape) > 1 and attr_shape[1] == 2:
-    //     attr_values = np.hstack((attr_values, np.zeros((attr_shape[0], 1))))
-
-    // displayColor_attr = UsdGeom.Mesh(prim).GetDisplayColorAttr()
-    // interpolation = attr.GetMetadata("interpolation")
-    // if not interpolation:
-    //     interpolation = 'vertex'
-
-        int i;
     }
-
-
-
-
-
-
-
 
     return error();
 
