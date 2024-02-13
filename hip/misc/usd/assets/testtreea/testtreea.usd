@@ -1,0 +1,33 @@
+#usda 1.0
+(
+    defaultPrim = "testtreea"
+    framesPerSecond = 24
+    metersPerUnit = 1
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "testtreea" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        asset identifier = @./testtreea.usd@
+        string name = "testtreea"
+        asset thumbnail = @./thumbnail.png@
+    }
+    prepend inherits = </__class__/testtreea>
+    kind = "component"
+    prepend payload = @./payload.usdnc@
+)
+{
+    float3[] extentsHint.timeSamples = {
+        1: [(3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (-8.07603, -0.9231852, -6.8655725), (9.538595, 24.464275, 12.89754), (-8.070623, -0.67470914, -6.8635116), (9.385971, 24.379934, 12.545569)],
+    }
+}
+
+class "__class__"
+{
+    class "testtreea"
+    {
+    }
+}
+
