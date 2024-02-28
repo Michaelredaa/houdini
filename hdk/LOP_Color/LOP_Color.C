@@ -57,7 +57,7 @@ static PRM_Name     interpolationTypes[] =
     PRM_Name("constant", "Constant"),
     PRM_Name("uniform", "Uniform"),
     PRM_Name("vertex", "Vertex"),
-    PRM_Name("facevaring", "Face Variaing"),
+    PRM_Name("facevaring", "Face Varaiing"),
     PRM_Name(0)
 };
 static PRM_ChoiceList   interpolationTypesMenu(PRM_CHOICELIST_SINGLE, interpolationTypes);

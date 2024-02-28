@@ -3,6 +3,7 @@
 
 #include <LOP/LOP_Node.h>
 
+
 namespace HOU_HDK
 {
     class LOP_Blast: public LOP_Node{
@@ -22,8 +23,7 @@ namespace HOU_HDK
             std::string evalAsString(const PRM_Name& parmName, fpreal t);
 
         private:
-            void PRIMPATH(UT_String&str, fpreal t);
-
+            void PRIMPATH(UT_String&str);
     };
 
 
