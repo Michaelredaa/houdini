@@ -76,7 +76,22 @@ LOP_UsdGeom::RADIUS(fpreal t)
     return evalFloat(theRadiusName.getToken(), 0, t);
 }
 
+struct ConnectedFaceInfo{
+    int faceIndex;
+    VtIntArray face; // array with face vertex indicies
+    VtIntArray faceVertexIndices; // array with indices of face vertex indicies
+};
 
+struct FaceInfo{
+    VtIntArray face; // array with face vertex indicies
+    VtIntArray faceVertexIndices; // array with indices of face vertex indicies
+};
+
+struct CompareDescend{
+    bool operator()(int a, int b) const {
+        return a>b;
+    }
+};
 
 class UsdGeo : public UsdGeomMesh {
 public:
@@ -88,28 +103,44 @@ public:
     }
 
 
-    VtArray<VtIntArray> GetFaces(){
-        VtArray<VtIntArray>  faces;
+    VtArray<FaceInfo> GetFaces(){
+        VtArray<FaceInfo> faces;
         int fv = 0;
 
         for(int f=0; f<fv_count.size(); f++){
             int end_idx = fv + fv_count[f];
 
             VtIntArray face(fv_indices.begin() + fv, fv_indices.begin() + end_idx);
-            faces.push_back(face);
+            VtIntArray faceIndices;
+            while (end_idx>fv){
+                faceIndices.push_back(fv);
+                fv ++;
+            }
+            faces.push_back({face, faceIndices});
             fv = end_idx;
         }
         return faces;
     }
 
 
-    VtArray<VtIntArray> GetConnectedFacesToPoint(int pointNum){
-        // Get the faces that contains the same point number
+    VtArray<ConnectedFaceInfo> GetConnectedFacesToPoint(int pointNum) {
+        // Get the faces that contain the same point number
 
-        VtArray<VtIntArray>  connected_faces;
-        for (const auto& face: GetFaces()){
-            if (std::any_of(face.begin(), face.end(), [pointNum](int value) {return value == pointNum; })){
-                connected_faces.push_back(face);
+        VtArray<ConnectedFaceInfo> connected_faces;
+        VtArray<FaceInfo> facesInfo = GetFaces();
+
+        for (int f = 0; f < facesInfo.size(); f++) {
+            const VtIntArray& face = facesInfo[f].face;
+
+            // Check if pointNum is present in the face
+            auto it = std::find(face.begin(), face.end(), pointNum);
+
+            if (it != face.end()) {
+                // Calculate the index of pointNum in the face
+
+                // Add connected face info
+                // VtIntArray faceVertexIndices(facesInfo.faceVertexIndices.begin(), facesInfo.faceVertexIndices.end());
+                connected_faces.push_back({f, face, facesInfo[f].faceVertexIndices});
             }
         }
 
@@ -122,11 +153,11 @@ public:
         VtArray<int> connectedPoints;
 
         std::set<int> uniquePoints;
-        for (const auto& face: GetFaces()){
-            for (int i=0; i <face.size(); i++){
+        for (const auto& faceInfo: GetFaces()){
+            for (int i=0; i <faceInfo.face.size(); i++){
                 if (i == pointNum){
-                    int previous_point = face[(i-1) % face.size()];
-                    int next_point = face[(i+1) % face.size()];
+                    int previous_point = faceInfo.face[(i-1) % faceInfo.face.size()];
+                    int next_point = faceInfo.face[(i+1) % faceInfo.face.size()];
                     uniquePoints.insert(previous_point);
                     uniquePoints.insert(next_point);
                 }
@@ -137,8 +168,40 @@ public:
     }
 
 
-    void DeletePoint(int pointNum){
-        points
+    int DeletePoint(int pointNum){
+        points.erase(points.begin() + pointNum);
+
+        // VtArray<int>  connected_faces = GetConnectedFacesToPoint(pointNum);
+
+        VtArray<ConnectedFaceInfo> connectedFacedInfo = GetConnectedFacesToPoint(pointNum);
+        std::set<int> pointsToDelete;
+        for (const auto& info :  connectedFacedInfo){
+            fv_count.erase(fv_count.begin() + info.faceIndex);
+            for (const int fv : info.faceVertexIndices){
+                fv_indices.erase(fv_indices.begin() + fv);
+            }
+            
+            // Get unique points
+            for (const int p : info.face){
+                pointsToDelete.insert(p);
+            }
+        }
+        
+        // sort points descending and 
+        std::set<int, CompareDescend> pointsToDeleteOrdered(pointsToDelete.begin(), pointsToDelete.end());
+        for (const int pi : pointsToDeleteOrdered){
+            
+            for (int i=0; i<fv_indices.size(); i++){
+                if (fv_indices[i] > pi){
+                    fv_indices[i] = fv_indices[i] - 1;
+                }
+            }
+        }
+
+        pointsAttr.Set(points);
+        FVCAttr.Set(fv_count);
+        FVIAttr.Set(fv_indices);
+
         return 0;
     }
 
@@ -160,11 +223,6 @@ private:
 
 
 
-
-
-
-
-
 OP_ERROR
 LOP_UsdGeom::cookMyLop(OP_Context &context)
 {
@@ -174,11 +232,11 @@ LOP_UsdGeom::cookMyLop(OP_Context &context)
 	return error();
 
     UT_String		     primpath;
-    fpreal		     radius;
+    // fpreal		     radius;
     fpreal now = context.getTime();
 
     PRIMPATH(primpath, now);
-    radius = RADIUS(now);
+    // radius = RADIUS(now);
 
     // Use editableDataHandle to get non-const access to our data handle, and
     // the lock it for writing. This makes sure that the USD stage is set up
@@ -188,33 +246,16 @@ LOP_UsdGeom::cookMyLop(OP_Context &context)
     HUSD_AutoWriteLock	     writelock(editableDataHandle());
     HUSD_AutoLayerLock	     layerlock(writelock);
 
-    // Create a helper class for creating USD primitives on the stage.
-    HUSD_CreatePrims	     creator(layerlock);
 
-    // Use the helper class to create a new "UsdGeom" primitive, with a
-    // specifier type of "def" to define this primitive even if it doesn't
-    // exist on the stage yet.
-    //
-    // The "empty string" parameter to createPrim tells it to not author a
-    // "kind" setting for this primiitve.
-    if (!creator.createPrim(primpath, "UsdGeomUsdGeom",
-	    UT_StringHolder::theEmptyString,
-	    HUSD_Constants::getPrimSpecifierDefine(),
-	    HUSD_Constants::getXformPrimType()))
-    {
-	addError(LOP_PRIM_NOT_CREATED, primpath);
-        return error();
-    }
-
-    // Use direct editing of the USD stage to modify the radius attribute
-    // of the new UsdGeom primitive. We could use the HUSD_SetAttributes
-    // helper class here, but this demonstrates that we are allowed to
-    // access the stage directly. The edit target will already be set to
-    // the "active layer", and as long as we leave it there, any changes
     // we make will be preserved by our data handle.
     UsdStageRefPtr	     stage = writelock.data()->stage();
     SdfPath		     sdfpath(HUSDgetSdfPath(primpath));
     UsdPrim		     prim = stage->GetPrimAtPath(sdfpath);
+
+    if (! prim.IsValid()){
+        addError(OP_ERR_ANYTHING, "Prim not found");
+        return error();
+    }
 
 
     VtArray<GfVec3f> points;
@@ -222,20 +263,12 @@ LOP_UsdGeom::cookMyLop(OP_Context &context)
     VtArray<int> fv_indicies;
 
     UsdGeo mesh = UsdGeo(prim);
-    UsdAttribute pointsAttr = mesh.GetPointsAttr();
-    UsdAttribute FVCAttr = mesh.GetFaceVertexCountsAttr();
-    UsdAttribute FVIAttr = mesh.GetFaceVertexIndicesAttr();
-
-    pointsAttr.Get(&points, now);
-    FVCAttr.Get(&fv_count, now);
-    FVIAttr.Get(&fv_indicies, now);
 
 
-
-    if (prim)
-	prim.GetAttribute(UsdGeomTokens->radius).Set(radius);
-
-    setLastModifiedPrims(primpath);
+    for (int i=0; i<10; i++){
+        mesh.DeletePoint(i);
+    }
+    
 
     return error();
 }
