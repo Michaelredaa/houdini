@@ -22,6 +22,10 @@
 #include <pxr/usd/usdGeom/tokens.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/points.h>
+#include <pxr/usd/usdGeom/bboxCache.h>
+#include <pxr/usd/usdGeom/xformCache.h>
+#include <pxr/usd/usdGeom/primvarsAPI.h>
+#include <pxr/base/gf/bbox3d.h>
 
 
 using namespace HOU_HDK;
@@ -183,6 +187,53 @@ string LOP_Grid::evalOrdAsString(const PRM_Name& parmName, fpreal t){
 }
 
 
+int createUV(UsdGeomMesh mesh){
+
+    UsdPrim prim = mesh.GetPrim();
+    UsdAttribute pointAttr = mesh.GetPointsAttr();
+    UsdAttribute FCAttr = mesh.GetFaceVertexCountsAttr();
+    UsdAttribute FVIAttr = mesh.GetFaceVertexIndicesAttr();
+
+    VtArray<GfVec3f> points;
+    VtIntArray face_count;
+    VtIntArray fv_indices;
+
+    pointAttr.Get(&points);
+    FCAttr.Get(&face_count);
+    FVIAttr.Get(&fv_indices);
+
+    TfTokenVector includePurpose{UsdGeomTokens->default_};
+    UsdGeomBBoxCache bboxCache(UsdTimeCode::Default(), includePurpose);
+    GfBBox3d worldBBox = bboxCache.ComputeWorldBound(prim);
+
+    double min_x = worldBBox.GetRange().GetMin()[0];
+    double min_z = worldBBox.GetRange().GetMin()[2];
+
+    double size_x = worldBBox.GetRange().GetSize()[0];
+    double size_z = worldBBox.GetRange().GetSize()[2];
+
+
+    int fv=0;
+    VtArray<GfVec2f>  st_array;
+    for (int fc=0; fc<face_count.size(); fc++){
+        int end_idx = fv + face_count[fc];
+        for (int i=fv; i<end_idx; i++){
+            int idx = fv_indices[i];
+            st_array.emplace_back(GfVec2f((points[idx][0]- min_x)/size_x, (points[idx][2]- min_z)/size_z));
+        }
+        fv = end_idx;
+    }
+
+
+    UsdGeomPrimvar stPrimvar =  UsdGeomPrimvarsAPI(mesh).CreatePrimvar(TfToken("st"), SdfValueTypeNames->TexCoord2fArray, UsdGeomTokens->faceVarying);
+    stPrimvar.Set(st_array);
+    // stPrimvar.SetIndices(fv_indices);
+
+    return 0;
+}
+
+
+
 
 OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     // Cook the node connected to our input, and make a "soft copy" of the
@@ -218,22 +269,6 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     // Create a helper class for creating USD primitives on the stage.
     HUSD_CreatePrims creator(layerlock);
 
-    // Use the helper class to create a new "Sphere" primitive, with a
-    // specifier type of "def" to define this primitive even if it doesn't
-    // exist on the stage yet.
-    //
-    // The "empty string" parameter to createPrim tells it to not author a
-    // "kind" setting for this primiitve.
-    // if (!creator.createPrim(primpath, "UsdGeomSphere",
-	//     UT_StringHolder::theEmptyString,
-	//     HUSD_Constants::getPrimSpecifierDefine(),
-	//     HUSD_Constants::getXformPrimType()))
-    // {
-	// addError(LOP_PRIM_NOT_CREATED, primpath);
-    //     return error();
-    // }
-
-    
 
     // Use direct editing of the USD stage to modify the radius attribute
     // of the new sphere primitive. We could use the HUSD_SetAttributes
@@ -244,7 +279,9 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     UsdStageRefPtr stage = writelock.data()->stage();
     SdfPath sdfpath(HUSDgetSdfPath(primpath));
 
-    UsdGeomMesh geom = UsdGeomMesh::Define(stage, sdfpath);
+    
+
+    UsdGeomMesh mesh = UsdGeomMesh::Define(stage, sdfpath);
     
     VtArray<GfVec3f> points = {};
     for (int r=0; r<rows; r++){
@@ -271,34 +308,28 @@ OP_ERROR LOP_Grid::cookMyLop(OP_Context &context){
     }
 
     // Set vertix count 
-    VtArray<int> vertic_count;
-    VtArray<int> vertex_indices;
+    VtArray<int> face_count;
+    VtArray<int> fv_indices;
     for (int r=0; r<rows-1; r++){
         for (int c=0; c<columns-1; c++){
-            vertic_count.emplace_back(4);
+            face_count.emplace_back(4);
 
             int idx = r*columns + c;
 
-            vertex_indices.emplace_back(idx);
-            vertex_indices.emplace_back(idx + 1);
-            vertex_indices.emplace_back(idx + 1 + columns);
-            vertex_indices.emplace_back(idx + columns);
+            fv_indices.emplace_back(idx);
+            fv_indices.emplace_back(idx + 1);
+            fv_indices.emplace_back(idx + 1 + columns);
+            fv_indices.emplace_back(idx + columns);
 
         }
     }
-    geom.CreateFaceVertexCountsAttr().Set(vertic_count);
-    geom.CreateFaceVertexIndicesAttr().Set(vertex_indices);
+    mesh.CreateFaceVertexCountsAttr().Set(face_count);
+    mesh.CreateFaceVertexIndicesAttr().Set(fv_indices);
+    mesh.CreatePointsAttr().Set(points);
 
+    createUV(mesh);
 
-    UsdAttribute poistsAttr = geom.CreatePointsAttr();
-    poistsAttr.Set(points);
-
-
-    // if (prim)
-	// prim.GetAttribute(UsdGeomTokens->radius).Set(points);
-
-    // setLastModifiedPrims(primpath);
+    setLastModifiedPrims(primpath);
 
     return error();
 }
-
