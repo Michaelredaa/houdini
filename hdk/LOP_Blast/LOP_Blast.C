@@ -28,7 +28,7 @@
 
 
 using namespace HOU_HDK;
-using namespace std;
+
 PXR_NAMESPACE_USING_DIRECTIVE
 
 void newLopOperator(OP_OperatorTable *table){
@@ -94,11 +94,19 @@ void LOP_Blast::PRIMPATH(UT_String &str){
     HUSDmakeValidUsdPath(str, true);
 }
 
-string LOP_Blast::evalAsString(const PRM_Name& parmName, fpreal t){
+std::string LOP_Blast::evalAsString(const PRM_Name& parmName, fpreal t){
     UT_String name;
     evalString(name, parmName.getToken(), 0, t);
     return name.toStdString();
 }
+
+
+struct SortDescend{
+    bool operator()(int a, int b) const {
+        return a>b;
+    }
+};
+
 
 OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
     if (cookModifyInput(context) >= UT_ERROR_ABORT){return error();}
@@ -111,8 +119,8 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
 
 
     PRIMPATH(primpath);
-    string attrname = evalAsString(attrnameParmName, now);
-    string sign = evalAsString(signParmName, now);
+    std::string attrname = evalAsString(attrnameParmName, now);
+    std::string sign = evalAsString(signParmName, now);
     fpreal attrval = evalFloat(attrvalParmName.getToken(), 0, now);
     int invert = bool(evalInt(invertParmName.getToken(), 0, now));
 
@@ -138,7 +146,7 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
 
     UsdGeomMesh mesh(prim);
     UsdAttribute pointsAttr = mesh.GetPointsAttr();
-    UsdAttribute pointsFVAttr = mesh.GetFaceVertexCountsAttr();
+    UsdAttribute pointsFVCAttr = mesh.GetFaceVertexCountsAttr();
     UsdAttribute pointsFVIAttr = mesh.GetFaceVertexIndicesAttr();
     UsdAttribute maskAttr = prim.GetAttribute(TfToken(attrname));
 
@@ -151,19 +159,19 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
     VtArray<GfVec3f> points;
     VtArray<int> points_fv_count;
     VtArray<int> points_fv_indices;
-    VtArray<float> mask_values;
+    VtArray<float> mask_array;
 
     pointsAttr.Get(&points, now);
-    pointsFVAttr.Get(&points_fv_count, now);
+    pointsFVCAttr.Get(&points_fv_count, now);
     pointsFVIAttr.Get(&points_fv_indices, now);
-    maskAttr.Get(&mask_values, now);
+    maskAttr.Get(&mask_array, now);
 
 
     // Get Mask Indicies
-    VtArray<int> mask;
-    for (int i=0; i<mask_values.size(); i++){
+    VtIntArray mask;
+    for (int i=0; i<mask_array.size(); i++){
 
-        if (mask_values[i] > 0.5){
+        if (mask_array[i] > 0.5){
             mask.push_back(i);
         }
     }
@@ -172,22 +180,21 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
         return error();
     }
 
+    std::sort(mask.begin(), mask.end(), SortDescend());
 
     // Faces 
-    VtArray<int> fv_mask;
+    VtArray<int> fvc_mask;
     VtArray<int> fvi_mask;
-    VtArray<VtIntArray> faces;
     int fv=0;
     for(int f=0; f<points_fv_count.size(); f++){
         int end_idx = fv + points_fv_count[f];
 
         VtIntArray face(points_fv_indices.begin() + fv, points_fv_indices.begin() + end_idx);
-        faces.push_back(face);
         for (int i=0; i<face.size(); i++){
             bool jumb=false;
             for (int p=0; p<mask.size(); p++){
                 if (face[i] == mask[p]){
-                    fv_mask.push_back(f);
+                    fvc_mask.push_back(f);
                     for (int fi=0; fi<face.size(); fi++){
                         fvi_mask.push_back(fv + fi);
                     }
@@ -200,53 +207,103 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
 
         fv = end_idx;
     }
-    
-    int sf = fv_mask.size()-1;
-    while (true){
-        points_fv_count.erase(points_fv_count.begin()+fv_mask[sf]);
-        sf--;
-        if (sf <0){
-            break;
-        }
-    }
 
-    int sfi = fvi_mask.size()-1;
-    while (true){
-        points_fv_indices.erase(points_fv_indices.begin()+fvi_mask[sfi]);
-        sfi--;
-        if (sfi <0){
-            break;
-        }
+    std::sort(fvc_mask.begin(), fvc_mask.end(), SortDescend());
+    std::sort(fvi_mask.begin(), fvi_mask.end(), SortDescend());
+
+
+    for (int i=0; i<fvc_mask.size(); i++){
+        points_fv_count.erase(points_fv_count.begin()+fvc_mask[i]);
     }
 
 
-    // Points
-    int s = mask.size()-1;
-    while (true){
-        points.erase(points.begin()+mask[s]);
+    for (int i=0; i<fvi_mask.size(); i++){
+        points_fv_indices.erase(points_fv_indices.begin()+fvi_mask[i]);
+    }
 
-        for (int i=0; i<points_fv_indices.size(); i++){
-            if (points_fv_indices[i] >  mask[s]){
-                points_fv_indices[i] = points_fv_indices[i]-1;
+    for (int i=0; i<mask.size(); i++){
+        points.erase(points.begin()+mask[i]);
+
+        for (int ii=0; ii<points_fv_indices.size(); ii++){
+            if (points_fv_indices[ii] >  mask[i]){
+                points_fv_indices[ii] = points_fv_indices[ii]-1;
             }
         }
-
-
-
-        s--;
-        if (s <0){
-            break;
-        }
     }
-
-
-
-
 
 
     pointsAttr.Set(points, now);
-    pointsFVAttr.Set(points_fv_count, now);
+    pointsFVCAttr.Set(points_fv_count, now);
     pointsFVIAttr.Set(points_fv_indices, now);
+
+        // VtValue interpolation;
+        // if (! attr.GetMetadata(TfToken("interpolation"), &interpolation)){
+        //     interpolation = VtValue("vertex");
+        // }
+
+    for (UsdAttribute attr : prim.GetAttributes()){
+
+        if (attr.GetName() == TfToken("points") ||
+            attr.GetName() == TfToken("faceVertexIndices") || 
+            attr.GetName() == TfToken("faceVertexCounts")
+            ){ continue; }
+
+        VtValue interpolation;
+        attr.GetMetadata(TfToken("interpolation"), &interpolation);
+
+        if (interpolation.IsEmpty()){ continue; }
+
+        VtValue attrVtValue;
+        attr.Get(&attrVtValue);
+
+        if ( attrVtValue.IsEmpty()){ continue; }
+        TfType arrayType = attrVtValue.GetType(); //.GetTypeName().c_str();
+
+        
+        if (interpolation == TfToken("vertex")){
+            VtValue attrValues;
+
+            if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
+                attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
+            }
+            else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
+                attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
+            }
+            else if (attrVtValue.IsHolding<VtArray<float>>()) {
+                attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
+            }
+            else if (attrVtValue.IsHolding<VtArray<int>>()) {
+                attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
+            }
+            else {
+                continue;
+            }
+
+            for (int i=0; i<mask.size(); i++){
+                attrValues.erase(attrValues.begin()+mask[i]);
+            }
+        }
+        if (interpolation == TfToken("uniform")){
+            
+        }
+        if (interpolation == TfToken("faceVarying")){
+            if (! attrVtValue.IsHolding<VtArray<GfVec2f>>()) {continue;}
+
+            VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
+            
+            for (int i=0; i<fvi_mask.size(); i++){
+                attrValues.erase(attrValues.begin()+fvi_mask[i]);
+            }
+            attr.Set(attrValues, UsdTimeCode::Default());
+        }
+
+
+        // UsdTimeCode::Default()
+
+        // printf("Attr: %s Type: %s\n", attr.GetName().GetString().c_str(), attrVtValue.GetType().GetTypeName().c_str());
+    }
+
+
 
     return error();
 
