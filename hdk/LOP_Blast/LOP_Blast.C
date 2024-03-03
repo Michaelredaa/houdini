@@ -108,6 +108,18 @@ struct SortDescend{
 };
 
 
+template <typename T>
+void maskArray(T& array, VtIntArray &mask) {
+    if(array.size() > 0 && mask.size() > 0){
+        for (int i=0; i < mask.size(); i++) {
+            if (mask[i] < array.size()){
+                array.erase(array.begin() + mask[i]);
+            }
+        }
+    }
+}
+
+
 OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
     if (cookModifyInput(context) >= UT_ERROR_ABORT){return error();}
 
@@ -212,14 +224,8 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
     std::sort(fvi_mask.begin(), fvi_mask.end(), SortDescend());
 
 
-    for (int i=0; i<fvc_mask.size(); i++){
-        points_fv_count.erase(points_fv_count.begin()+fvc_mask[i]);
-    }
-
-
-    for (int i=0; i<fvi_mask.size(); i++){
-        points_fv_indices.erase(points_fv_indices.begin()+fvi_mask[i]);
-    }
+    maskArray(points_fv_count, fvc_mask);
+    maskArray(points_fv_indices, fvi_mask);
 
     for (int i=0; i<mask.size(); i++){
         points.erase(points.begin()+mask[i]);
@@ -241,6 +247,8 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
         //     interpolation = VtValue("vertex");
         // }
 
+    // UsdTimeCode now = UsdTimeCode::Default();
+
     for (UsdAttribute attr : prim.GetAttributes()){
 
         if (attr.GetName() == TfToken("points") ||
@@ -259,46 +267,105 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
         if ( attrVtValue.IsEmpty()){ continue; }
         TfType arrayType = attrVtValue.GetType(); //.GetTypeName().c_str();
 
-        
+
         if (interpolation == TfToken("vertex")){
-            VtValue attrValues;
 
             if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
-                attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
+                VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
+                maskArray(attrValues, mask);
+                attr.Set(attrValues, now);
+                continue;
             }
             else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
-                attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
+                VtArray<GfVec3f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
+                maskArray(attrValues, mask);
+                attr.Set(attrValues, now);
+                continue;
             }
             else if (attrVtValue.IsHolding<VtArray<float>>()) {
-                attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
+                VtArray<float> attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
+                maskArray(attrValues, mask);
+                attr.Set(attrValues, now);
+                continue;
+
             }
             else if (attrVtValue.IsHolding<VtArray<int>>()) {
-                attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
+                VtArray<int> attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
+                maskArray(attrValues, mask);
+                attr.Set(attrValues, now);
+                continue;
+
             }
             else {
                 continue;
             }
-
-            for (int i=0; i<mask.size(); i++){
-                attrValues.erase(attrValues.begin()+mask[i]);
-            }
         }
+
         if (interpolation == TfToken("uniform")){
-            
-        }
-        if (interpolation == TfToken("faceVarying")){
-            if (! attrVtValue.IsHolding<VtArray<GfVec2f>>()) {continue;}
 
-            VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
-            
-            for (int i=0; i<fvi_mask.size(); i++){
-                attrValues.erase(attrValues.begin()+fvi_mask[i]);
+            if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
+                VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
+                maskArray(attrValues, fvc_mask);
+                attr.Set(attrValues, now);
+                continue;
             }
-            attr.Set(attrValues, UsdTimeCode::Default());
+            else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
+                VtArray<GfVec3f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
+                maskArray(attrValues, fvc_mask);
+                attr.Set(attrValues, now);
+                continue;
+            }
+            else if (attrVtValue.IsHolding<VtArray<float>>()) {
+                VtArray<float> attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
+                maskArray(attrValues, fvc_mask);
+                attr.Set(attrValues, now);
+                continue;
+
+            }
+            else if (attrVtValue.IsHolding<VtArray<int>>()) {
+                VtArray<int> attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
+                maskArray(attrValues, fvc_mask);
+                attr.Set(attrValues, now);
+                continue;
+
+            }
+            else {
+                continue;
+            }
         }
 
+        if (interpolation == TfToken("faceVarying")){
 
-        // UsdTimeCode::Default()
+            if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
+                VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
+                maskArray(attrValues, fvi_mask);
+                attr.Set(attrValues, now);
+                continue;
+            }
+            else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
+                VtArray<GfVec3f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
+                maskArray(attrValues, fvi_mask);
+                attr.Set(attrValues, now);
+                continue;
+            }
+            else if (attrVtValue.IsHolding<VtArray<float>>()) {
+                VtArray<float> attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
+                maskArray(attrValues, fvi_mask);
+                attr.Set(attrValues, now);
+                continue;
+
+            }
+            else if (attrVtValue.IsHolding<VtArray<int>>()) {
+                VtArray<int> attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
+                maskArray(attrValues, fvi_mask);
+                attr.Set(attrValues, now);
+                continue;
+
+            }
+            else {
+                continue;
+            }
+        }
 
         // printf("Attr: %s Type: %s\n", attr.GetName().GetString().c_str(), attrVtValue.GetType().GetTypeName().c_str());
     }
