@@ -148,6 +148,10 @@ backup/
 .dmypy.json
 dmypy.json
 
+# usd binary
+.usdc
+.usd
+
 # Pyre type checker
 .pyre/
 
