@@ -168,22 +168,32 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
         return UT_ERROR_ABORT; 
     }
 
+    UsdTimeCode points_time = pointsAttr.GetNumTimeSamples() > 0 ? UsdTimeCode(now) : UsdTimeCode::Default();
+    UsdTimeCode points_fvc_time = pointsFVCAttr.GetNumTimeSamples() > 0 ? UsdTimeCode(now) : UsdTimeCode::Default();
+    UsdTimeCode points_fvi_time = pointsFVIAttr.GetNumTimeSamples() > 0 ? UsdTimeCode(now) : UsdTimeCode::Default();
+    UsdTimeCode mask_time = maskAttr.GetNumTimeSamples() > 0 ? UsdTimeCode(now) : UsdTimeCode::Default();
+
+
     VtArray<GfVec3f> points;
     VtArray<int> points_fv_count;
     VtArray<int> points_fv_indices;
     VtArray<float> mask_array;
 
-    pointsAttr.Get(&points, now);
-    pointsFVCAttr.Get(&points_fv_count, now);
-    pointsFVIAttr.Get(&points_fv_indices, now);
-    maskAttr.Get(&mask_array, now);
+    pointsAttr.Get(&points, points_time);
+    pointsFVCAttr.Get(&points_fv_count, points_fvc_time);
+    pointsFVIAttr.Get(&points_fv_indices, points_fvi_time);
+    maskAttr.Get(&mask_array, mask_time);
 
 
     // Get Mask Indicies
     VtIntArray mask;
     for (int i=0; i<mask_array.size(); i++){
 
-        if (mask_array[i] > 0.5){
+        if (mask_array[i] > attrval && sign == ">"){
+            mask.push_back(i);
+        }else if ((mask_array[i] < attrval && sign == "<")){
+            mask.push_back(i);
+        }else if ((mask_array[i] == attrval && sign == "==")){
             mask.push_back(i);
         }
     }
@@ -238,16 +248,10 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
     }
 
 
-    pointsAttr.Set(points, now);
-    pointsFVCAttr.Set(points_fv_count, now);
-    pointsFVIAttr.Set(points_fv_indices, now);
+    pointsAttr.Set(points, points_time);
+    pointsFVCAttr.Set(points_fv_count, points_fvc_time);
+    pointsFVIAttr.Set(points_fv_indices, points_fvi_time);
 
-        // VtValue interpolation;
-        // if (! attr.GetMetadata(TfToken("interpolation"), &interpolation)){
-        //     interpolation = VtValue("vertex");
-        // }
-
-    // UsdTimeCode now = UsdTimeCode::Default();
 
     for (UsdAttribute attr : prim.GetAttributes()){
 
@@ -262,7 +266,10 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
         if (interpolation.IsEmpty()){ continue; }
 
         VtValue attrVtValue;
-        attr.Get(&attrVtValue);
+
+        bool isTimeSampled = attr.GetNumTimeSamples() > 0;
+        UsdTimeCode timeToUse = isTimeSampled ? UsdTimeCode(now) : UsdTimeCode::Default();
+        attr.Get(&attrVtValue, timeToUse);
 
         if ( attrVtValue.IsEmpty()){ continue; }
         TfType arrayType = attrVtValue.GetType(); //.GetTypeName().c_str();
@@ -273,26 +280,26 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
             if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
                 VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
                 maskArray(attrValues, mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
             }
             else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
                 VtArray<GfVec3f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
                 maskArray(attrValues, mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
             }
             else if (attrVtValue.IsHolding<VtArray<float>>()) {
                 VtArray<float> attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
                 maskArray(attrValues, mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
 
             }
             else if (attrVtValue.IsHolding<VtArray<int>>()) {
                 VtArray<int> attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
                 maskArray(attrValues, mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
 
             }
@@ -306,26 +313,26 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
             if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
                 VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
                 maskArray(attrValues, fvc_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
             }
             else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
                 VtArray<GfVec3f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
                 maskArray(attrValues, fvc_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
             }
             else if (attrVtValue.IsHolding<VtArray<float>>()) {
                 VtArray<float> attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
                 maskArray(attrValues, fvc_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
 
             }
             else if (attrVtValue.IsHolding<VtArray<int>>()) {
                 VtArray<int> attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
                 maskArray(attrValues, fvc_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
 
             }
@@ -339,26 +346,26 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
             if (attrVtValue.IsHolding<VtArray<GfVec2f>>()) {
                 VtArray<GfVec2f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec2f>>();
                 maskArray(attrValues, fvi_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
             }
             else if (attrVtValue.IsHolding<VtArray<GfVec3f>>()) {
                 VtArray<GfVec3f> attrValues = attrVtValue.UncheckedGet<VtArray<GfVec3f>>();
                 maskArray(attrValues, fvi_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
             }
             else if (attrVtValue.IsHolding<VtArray<float>>()) {
                 VtArray<float> attrValues = attrVtValue.UncheckedGet<VtArray<float>>();
                 maskArray(attrValues, fvi_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
 
             }
             else if (attrVtValue.IsHolding<VtArray<int>>()) {
                 VtArray<int> attrValues = attrVtValue.UncheckedGet<VtArray<int>>();
                 maskArray(attrValues, fvi_mask);
-                attr.Set(attrValues, now);
+                attr.Set(attrValues, timeToUse);
                 continue;
 
             }
@@ -367,7 +374,7 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
             }
         }
 
-        // printf("Attr: %s Type: %s\n", attr.GetName().GetString().c_str(), attrVtValue.GetType().GetTypeName().c_str());
+        printf("Attr: %s Type: %d\n", attr.GetName().GetString().c_str(), isTimeSampled);
     }
 
 
