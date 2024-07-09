@@ -119,6 +119,22 @@ void maskArray(T& array, VtIntArray &mask) {
     }
 }
 
+// template <typename T>
+// void maskArray(T& array, const VtIntArray &mask) {
+//     if (array.size() > 0 && mask.size() > 0) {
+//         std::vector<bool> toRemove(array.size(), false);
+//         for (int idx : mask) {
+//             if (idx < array.size()) {
+//                 toRemove[idx] = true;
+//             }
+//         }
+//         array.erase(std::remove_if(array.begin(), array.end(), 
+//                      [&](const T&, int idx){ return toRemove[idx]; }), array.end());
+//     }
+// }
+
+
+
 
 OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
     if (cookModifyInput(context) >= UT_ERROR_ABORT){return error();}
@@ -187,22 +203,28 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
 
     // Get Mask Indicies
     VtIntArray mask;
-    for (int i=0; i<mask_array.size(); i++){
-
-        if (mask_array[i] > attrval && sign == ">"){
+    VtIntArray imask;
+    for (int i = 0; i < mask_array.size(); i++) {
+        if ((mask_array[i] > attrval && sign == ">") ||
+            (mask_array[i] < attrval && sign == "<") ||
+            (mask_array[i] == attrval && sign == "==")) {
             mask.push_back(i);
-        }else if ((mask_array[i] < attrval && sign == "<")){
-            mask.push_back(i);
-        }else if ((mask_array[i] == attrval && sign == "==")){
-            mask.push_back(i);
+        }else{
+            imask.push_back(i);
         }
     }
+
+    if (invert){
+        mask = imask;
+    }
+
 
     if (mask.size() <= 0){
         return error();
     }
 
-    std::sort(mask.begin(), mask.end(), SortDescend());
+    // Sort mask indices in descending order
+    std::sort(mask.begin(), mask.end(), std::greater<int>());
 
     // Faces 
     VtArray<int> fvc_mask;
@@ -230,8 +252,8 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
         fv = end_idx;
     }
 
-    std::sort(fvc_mask.begin(), fvc_mask.end(), SortDescend());
-    std::sort(fvi_mask.begin(), fvi_mask.end(), SortDescend());
+    std::sort(fvc_mask.begin(), fvc_mask.end(), std::greater<int>());
+    std::sort(fvi_mask.begin(), fvi_mask.end(), std::greater<int>());
 
 
     maskArray(points_fv_count, fvc_mask);
@@ -374,7 +396,6 @@ OP_ERROR LOP_Blast::cookMyLop(OP_Context &context){
             }
         }
 
-        printf("Attr: %s Type: %d\n", attr.GetName().GetString().c_str(), isTimeSampled);
     }
 
 
