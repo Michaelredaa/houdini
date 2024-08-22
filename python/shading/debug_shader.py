@@ -65,10 +65,10 @@ def create_connect_debug():
     debug_node = parent.node(debug_node_name)
     if debug_node is None:
         debug_node = parent.createNode(debug_node_type, debug_node_name)
-        pos = out_node.postion()
+        pos = out_node.position()
         pos[0] += 10
         pos[1] += 10
-        debug_node.setPostion()
+        debug_node.setPosition()
 
     out_node.setInput(0, debug_node)
 
