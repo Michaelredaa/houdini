@@ -83,8 +83,8 @@ def create_connect_debug():
             idx = 0
             for i, conn in enumerate(connections):
                 if conn:
-                    idx = i
-
+                    if [x for x in conn if x.outputItem().name() == debug_node_name]:
+                        idx = i
             debug_node.setNamedInput(debug_input_name, view_node, (idx + 1) % len(connections))
 
 
