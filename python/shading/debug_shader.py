@@ -68,7 +68,7 @@ def create_connect_debug():
         pos = out_node.position()
         pos[0] += 10
         pos[1] += 10
-        debug_node.setPosition()
+        debug_node.setPosition(pos)
 
     out_node.setInput(0, debug_node)
 
